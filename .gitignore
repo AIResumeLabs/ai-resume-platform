@@ -1,7 +1,15 @@
-venv/
+# Python build and cache artifacts
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+
+# Environment variables
 .env
-node_modules/
-chroma_db/
-.DS_Store
+
+# Project specific local storage
+backend/chroma_db/
