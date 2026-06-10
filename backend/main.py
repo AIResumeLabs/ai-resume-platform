@@ -1,7 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.routers import resume
+from backend.db.session import engine, Base  # Import database links
+from backend.models import models            # Import models to register them
 
+# Generate all database tables on application startup
+Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title="AI Resume Platform API",
     description="Backend API for parsing, embedding, and ranking resumes.",
