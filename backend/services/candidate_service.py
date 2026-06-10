@@ -45,3 +45,12 @@ def save_parsed_candidate(db: Session, parsed_data: dict, raw_text: str, filenam
         db.rollback()  # Rollback changes if anything crashes to avoid partial database data corruptions
         logger.error(f"Failed to persist candidate transaction to database: {str(e)}")
         raise e
+    # Append to backend/services/candidate_service.py
+
+def get_all_candidates(db: Session):
+    """Fetches all candidate records from the database."""
+    return db.query(Candidate).all()
+
+def get_candidate_by_id(db: Session, candidate_id: int):
+    """Fetches a specific candidate by their unique primary key ID."""
+    return db.query(Candidate).filter(Candidate.id == candidate_id).first()

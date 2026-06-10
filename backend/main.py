@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.routers import resume
 from backend.db.session import engine, Base  # Import database links
 from backend.models import models            # Import models to register them
-
+from backend.routers import resume, jobs  # Added jobs router import
 # Generate all database tables on application startup
 Base.metadata.create_all(bind=engine)
 app = FastAPI(
@@ -23,7 +23,7 @@ app.add_middleware(
 
 # Include routes
 app.include_router(resume.router)
-
+app.include_router(jobs.router)  # Included jobs routes
 @app.get("/")
 def read_root():
     return {"message": "Welcome to the AI Resume Platform API. Head over to /docs for interactive endpoints."}
