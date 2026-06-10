@@ -1,5 +1,6 @@
 from fastapi import FastAPI
-from backend.routers import resume  # Import your new router file
+from fastapi.middleware.cors import CORSMiddleware
+from backend.routers import resume
 
 app = FastAPI(
     title="AI Resume Platform API",
@@ -7,12 +8,21 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Include the resume router
+# --- ENABLE CORS FOR DEV ENVIRONMENT ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Open to all origins for development stage
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include routes
 app.include_router(resume.router)
 
 @app.get("/")
 def read_root():
-    return {"message": "Welcome to the AI Resume Platform API. Head over to /docs for the API documentation."}
+    return {"message": "Welcome to the AI Resume Platform API. Head over to /docs for interactive endpoints."}
 
 @app.get("/health")
 def health_check():

@@ -1,5 +1,9 @@
+import logging
 from fastapi import APIRouter, UploadFile, File, HTTPException
-import pdfplumber
+from backend.services.pdf_parser import extract_text_from_pdf
+from nlp.extractor import parse_resume_text
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api/resumes",
@@ -8,29 +12,21 @@ router = APIRouter(
 
 @router.post("/upload")
 async def upload_resume(file: UploadFile = File(...)):
-    # 1. Validate that it's a PDF
     if file.content_type != "application/pdf":
         raise HTTPException(status_code=400, detail="Only PDF files are supported right now!")
     
-    try:
-        # 2. Open the PDF file stream using pdfplumber
-        extracted_text = ""
-        with pdfplumber.open(file.file) as pdf:
-            for page in pdf.pages:
-                text = page.extract_text()
-                if text:
-                    extracted_text += text + "\n"
-        
-        # 3. Quick guard check to see if we actually got text out of it
-        if not extracted_text.strip():
-            raise HTTPException(status_code=422, detail="PDF uploaded successfully, but no readable text could be extracted.")
-
-        # 4. Return the response
-        return {
-            "filename": file.filename,
-            "status": "processed",
-            "extracted_text": extracted_text.strip()
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"An error occurred while parsing the PDF: {str(e)}")
+    logger.info(f"Received file upload request: {file.filename}")
+    
+    # 1. Use isolated service to parse PDF contents
+    raw_text = extract_text_from_pdf(file.file)
+    
+    # 2. Extract entities via NLP
+    parsed_profile = parse_resume_text(raw_text)
+    
+    # 3. Formulate clean telemetry payload
+    return {
+        "filename": file.filename,
+        "status": "processed",
+        "text_length": len(raw_text),
+        "parsed_data": parsed_profile
+    }
