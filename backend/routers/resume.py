@@ -5,7 +5,11 @@ from backend.models.models import Candidate
 from backend.db.session import get_db
 from backend.services.pdf_parser import extract_text_from_pdf
 from nlp.extractor import parse_resume_text
-from backend.services.candidate_service import save_parsed_candidate  # Import the new DB service
+from backend.services.candidate_service import save_parsed_candidate
+
+# --- YOUR NEW IMPORTS ---
+from nlp.embedder import embedder_instance
+from vector_store.chroma_client import vector_db
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +39,30 @@ async def upload_resume(file: UploadFile = File(...), db: Session = Depends(get_
         filename=file.filename
     )
     
+    # 4. --- GENERATE EMBEDDINGS AND SAVE TO CHROMADB ---
+    try:
+        # Convert the parsed dictionary into a math vector
+        resume_vector = embedder_instance.embed_candidate(parsed_profile)
+        
+        # Save it to ChromaDB, linked to the exact SQLite candidate ID
+        vector_db.add_resume(
+            candidate_id=db_candidate.id,
+            vector=resume_vector,
+            metadata={
+                "name": db_candidate.name or "Unknown", 
+                "email": db_candidate.email or "Unknown"
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to save vector to ChromaDB: {str(e)}")
+        # We don't raise an exception here because the SQLite save worked, 
+        # but we definitely want to log it if the AI part fails.
+
+    
     return {
         "candidate_id": db_candidate.id,
         "filename": db_candidate.file_path,
-        "status": "successfully_saved_to_db",
+        "status": "successfully_saved_to_db_and_vector_store",
         "text_length": len(raw_text),
         "parsed_data": {
             "name": db_candidate.name,
@@ -47,6 +71,7 @@ async def upload_resume(file: UploadFile = File(...), db: Session = Depends(get_
             "skills": [s.skill_name for s in db_candidate.skills]
         }
     }
+
 # Inside backend/routers/resumes.py - Update your GET endpoints:
 
 from backend.services import candidate_service  # Ensure this import is present at the top

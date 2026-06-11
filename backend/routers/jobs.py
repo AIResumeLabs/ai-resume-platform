@@ -1,3 +1,4 @@
+from backend.services.ranking_service import rank_candidates_for_job
 import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -52,3 +53,38 @@ async def get_job(job_id: int, db: Session = Depends(get_db)):
         "raw_text": job.raw_text,
         "created_at": job.created_at
     }
+
+# --- ADD THIS TO THE BOTTOM OF backend/routers/jobs.py ---
+
+@router.get("/{job_id}/match")
+async def match_candidates_for_job(job_id: int, top_k: int = 5, db: Session = Depends(get_db)):
+    """
+    Triggers the AI matchmaking engine. 
+    Takes a Job ID, embeds its description, searches ChromaDB, 
+    and returns the top 'k' most relevant candidates with their percentage scores.
+    """
+    logger.info(f"Initiating AI matchmaking for Job ID: {job_id}")
+    
+    try:
+        ranked_results = rank_candidates_for_job(db=db, job_id=job_id, top_k=top_k)
+        
+        if not ranked_results:
+            return {
+                "job_id": job_id,
+                "message": "No relevant candidates found in the database.",
+                "matches": []
+            }
+            
+        return {
+            "job_id": job_id,
+            "status": "success",
+            "total_matches_returned": len(ranked_results),
+            "matches": ranked_results
+        }
+        
+    except HTTPException as he:
+        # Pass through expected 404 errors (like Job Not Found)
+        raise he
+    except Exception as e:
+        logger.error(f"Matchmaking failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="An error occurred during the AI ranking process.")
