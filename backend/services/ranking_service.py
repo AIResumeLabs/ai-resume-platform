@@ -4,103 +4,103 @@ from fastapi import HTTPException
 from backend.models.models import JobDescription, Candidate
 from nlp.embedder import embedder_instance
 from vector_store.chroma_client import vector_db
-from nlp.extractor import parse_resume_text  # Re-using your NLP extractor for jobs!
+from nlp.extractor import parse_resume_text 
 
 logger = logging.getLogger(__name__)
 
-# --- ADJACENT DOMAIN KNOWLEDGE BASE ---
-ADJACENT_TRACKS = {
-    "DevOps": ["docker", "kubernetes", "aws", "cicd", "linux", "jenkins"],
-    "Frontend": ["react", "typescript", "tailwind", "next.js", "javascript"],
-    "Data Science": ["pandas", "numpy", "scikit-learn", "tensorflow", "pytorch", "sql"],
-    "System Design": ["system design", "microservices", "caching", "redis", "kafka"]
-}
+# ==============================================================================
+# ADVANCED QUANT/CORE ENGINEERING FILTERING SYSTEM
+# ==============================================================================
 
-def calculate_versatility_score(candidate_skills: list[str], secondary_domains: dict[str, list[str]]) -> dict:
-    """Evaluates candidate readiness across adjacent technical tracks."""
-    domain_scores = {}
-    candidate_skills_lower = [s.lower() for s in candidate_skills]
-    
-    for domain, skills in secondary_domains.items():
-        skills_lower = [s.lower() for s in skills]
-        matches = len(set(candidate_skills_lower).intersection(set(skills_lower)))
-        domain_scores[domain] = matches / len(skills) if skills else 0.0
-        
-    overall_versatility = sum(domain_scores.values()) / len(domain_scores) if domain_scores else 0.0
-    
-    return {
-        "overall_versatility_score": round(overall_versatility, 2),
-        "domain_breakdown": domain_scores
-    }
+QUANT_CRITICAL_SKILLS = {
+    "c++", "probability", "statistics", "algorithms", "data structures",
+    "quantitative finance", "stochastic processes", "competitive programming",
+    "time series analysis", "machine learning"
+}
 
 def rank_candidate_advanced(
     resume_skills: list[str],
     required_skills: list[str],
-    similarity_score: float,
-    adjacent_tracks: dict[str, list[str]]
+    raw_similarity_score: float
 ) -> dict:
     
-    # 1. Core Technical Fit (FIXED)
-    core_set = set([s.lower() for s in required_skills])
-    candidate_set = set([s.lower() for s in resume_skills])
+    # CRASH FIX: Strip out any accidental 'None' values the LLM might have returned
+    safe_req = [s for s in required_skills if s is not None]
+    safe_res = [s for s in resume_skills if s is not None]
     
-    # FIX: If the job description has no tech skills (e.g. "gamer"), 
-    # do NOT give them a perfect score. Give them a 0.0 for technical fit.
-    core_match = len(candidate_set.intersection(core_set)) / len(core_set) if core_set else 0.0
+    core_set = set([s.lower() for s in safe_req])
+    candidate_set = set([s.lower() for s in safe_res])
     
-    # 2. Cross-Functional Versatility
-    versatility_data = calculate_versatility_score(resume_skills, adjacent_tracks)
-    versatility_score = versatility_data["overall_versatility_score"]
+    # 1. TIERED SKILL MATCHING
+    total_possible = 0.0
+    earned = 0.0
+    critical_hits = 0
     
-    # 3. Experience Match (FIXED)
-    # Defaulting to 0.0 instead of 1.0 so we don't give away free points.
-    exp_score = 0.0 
-    
-    # 4. Composite Scoring Matrix
-    final_score = (
-        core_match * 0.35 +
-        similarity_score * 0.40 +
-        exp_score * 0.10 +
-        versatility_score * 0.15
-    )
-    
-    # ... (Keep the rest of the insight generation below exactly the same) ...
-    # Generate insights
-    explanation_points = []
-    if versatility_score > 0.3: # Lowered threshold slightly for more dynamic insights
-        top_adjacent = max(versatility_data["domain_breakdown"], key=versatility_data["domain_breakdown"].get)
-        if versatility_data["domain_breakdown"][top_adjacent] > 0:
-            explanation_points.append(f"Highly versatile candidate with strong secondary potential in {top_adjacent}.")
-    else:
-        explanation_points.append("Highly specialized profile with a tight focus on core competencies.")
+    for skill in core_set:
+        weight = 3.0 if skill in QUANT_CRITICAL_SKILLS else 1.0
+        total_possible += weight
         
+        if skill in candidate_set:
+            earned += weight
+            if skill in QUANT_CRITICAL_SKILLS:
+                critical_hits += 1
+                
+    core_match = (earned / total_possible) if total_possible > 0 else 0.0
+    
+    # 2. STRICT SEMANTIC SCALING
+    adjusted_similarity = max(0.0, (raw_similarity_score - 0.45) / 0.55)
+    
+    # 3. BASELINE SCORE
+    base_score = (adjusted_similarity * 0.35) + (core_match * 0.65)
+    
+    # 4. THE KNOCKOUT PENALTY
+    jd_has_critical = len(core_set.intersection(QUANT_CRITICAL_SKILLS)) > 0
+    
+    if jd_has_critical and critical_hits == 0:
+        final_score = base_score * 0.40
+        insight = "⚠️ GATEKEEPER FILTER: Candidate severely lacks required critical quantitative or core engineering fundamentals."
+    elif jd_has_critical and critical_hits >= 2:
+        final_score = min(1.0, base_score * 1.15)
+        insight = "⭐ PREMIUM MATCH: Candidate demonstrates strong overlap with critical quantitative fundamentals."
+    else:
+        final_score = base_score
+        insight = "Standard match based on general technical alignment and vector similarity."
+
     return {
         "final_score": round(final_score, 3),
         "breakdown": {
-            "core_technical": round(core_match, 2),
-            "semantic_affinity": round(similarity_score, 2),
-            "cross_functional_utility": versatility_score
+            "weighted_skill_match": round(core_match, 2),
+            "adjusted_semantic_affinity": round(adjusted_similarity, 2),
+            "critical_hits": critical_hits
         },
-        "insight_summary": " ".join(explanation_points)
+        "insight_summary": insight
     }
 
 def rank_candidates_for_job(db: Session, job_id: int, top_k: int = 5):
-    """
-    The orchestrator: Fetches the job, extracts required skills, queries ChromaDB, 
-    and applies the advanced composite ranking algorithm.
-    """
     job = db.query(JobDescription).filter(JobDescription.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail=f"Job with ID {job_id} not found.")
 
     logger.info(f"Analyzing Job: {job.title}")
     
-    # 1. Parse the Job Description to find explicit required skills
-    parsed_job = parse_resume_text(job.raw_text)
-    required_skills = parsed_job.get("skills", [])
+    # CRASH FIX: Prevent 'NoneType' crashes by falling back to empty strings
+    safe_title = job.title if job.title else "Unknown Role"
+    safe_raw_text = job.raw_text if job.raw_text else ""
     
-    # 2. Get the Semantic Vector matches from ChromaDB
-    job_vector = embedder_instance.embed_text(job.raw_text)
+    # Combine title and text so the LLM gets the full context
+    combined_job_text = f"Job Title: {safe_title}\nRequirements: {safe_raw_text}"
+    
+    # 1. Parse using Gemini
+    parsed_job = parse_resume_text(combined_job_text)
+    required_skills = parsed_job.get("skills") or []  # 'or []' protects against None
+    
+    # 2. Symmetric Embedding Logic
+    if required_skills:
+        job_text_to_embed = f"Job Title: {safe_title}. Candidate skilled in: " + ", ".join(required_skills)
+    else:
+        job_text_to_embed = combined_job_text
+        
+    job_vector = embedder_instance.embed_text(job_text_to_embed)
     chroma_results = vector_db.search_resumes(query_vector=job_vector, top_k=top_k)
 
     if not chroma_results:
@@ -114,15 +114,12 @@ def rank_candidates_for_job(db: Session, job_id: int, top_k: int = 5):
             candidate_skills = [s.skill_name for s in candidate_record.skills]
             semantic_score = match["score"]
             
-            # 3. Apply your advanced composite ranking formula
             advanced_metrics = rank_candidate_advanced(
                 resume_skills=candidate_skills,
                 required_skills=required_skills,
-                similarity_score=semantic_score,
-                adjacent_tracks=ADJACENT_TRACKS
+                raw_similarity_score=semantic_score
             )
 
-            # Convert final score to percentage
             percentage_score = round(advanced_metrics["final_score"] * 100, 2)
 
             ranked_candidates.append({
@@ -136,8 +133,6 @@ def rank_candidates_for_job(db: Session, job_id: int, top_k: int = 5):
                 "insights": advanced_metrics["insight_summary"],
                 "detailed_breakdown": advanced_metrics["breakdown"]
             })
-
-    # Sort the final list by the new composite score
-    ranked_candidates.sort(key=lambda x: x["match_score"], reverse=True)
-    
+            
+    ranked_candidates.sort(key=lambda x: x["match_score"], reverse=True)  
     return ranked_candidates
