@@ -1,0 +1,12 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.git/
+.gitignore
+.env
+.pytest_cache/
+alembic/versions/__pycache__/
+chroma_db/

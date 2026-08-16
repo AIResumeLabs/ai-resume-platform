@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  # ---------------------------------------------------------------------------
+  # 1. PostgreSQL Database Service
+  # ---------------------------------------------------------------------------
+  db:
+    image: postgres:15-alpine
+    container_name: nexus_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: resume_matcher_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d resume_matcher_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # 2. FastAPI Backend Service
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: nexus_backend
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgrespassword@db:5432/resume_matcher_db
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma_data:/app/chroma_db
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # 3. Streamlit Frontend Service
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: nexus_frontend
+    restart: always
+    environment:
+      - BACKEND_URL=http://backend:8000
+    ports:
+      - "8501:8501"
+    depends_on:
+      - backend
+
+# Persistent volumes for PostgreSQL data and ChromaDB vectors
+volumes:
+  postgres_data:
+  chroma_data:

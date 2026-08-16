@@ -1,20 +1,27 @@
 import logging
 from sqlalchemy.orm import Session
 from backend.models.models import JobDescription
+from nlp.extractor import parse_job_requirements  # Import the parser here
 
 logger = logging.getLogger(__name__)
 
 def create_job_description(db: Session, title: str, raw_text: str) -> JobDescription:
-    """Inserts a new target Job Description role into the schema."""
+    """Inserts a new target Job Description and extracts weighted skills via LLM."""
+    
+    # 1. Parse the JD using Gemini exactly ONCE here
+    combined_text = f"Job Title: {title}\nRequirements: {raw_text}"
+    weighted_skills = parse_job_requirements(combined_text)
+    
     try:
         new_job = JobDescription(
             title=title,
-            raw_text=raw_text
+            raw_text=raw_text,
+            parsed_skills=weighted_skills  # 2. Save the JSON directly to PostgreSQL
         )
         db.add(new_job)
         db.commit()
         db.refresh(new_job)
-        logger.info(f"Successfully saved new Job Description: {title} (ID: {new_job.id})")
+        logger.info(f"Successfully saved Job Description and cached skills: {title}")
         return new_job
     except Exception as e:
         db.rollback()

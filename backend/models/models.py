@@ -1,6 +1,8 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, Float, DateTime
+from datetime import datetime, timezone
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, Float, DateTime,JSON
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from sqlalchemy.sql import func
 from backend.db.session import Base
 
 class Candidate(Base):
@@ -12,7 +14,9 @@ class Candidate(Base):
     phone = Column(String, nullable=True)
     raw_text = Column(Text, nullable=True)
     file_path = Column(String, nullable=True)
-    uploaded_at = Column(DateTime, default=datetime.utcnow)
+    # --- NEW COLUMN: Stores the rich skill data with 1-5 proficiency scores ---
+    parsed_profile = Column(JSON, nullable=True)
+    uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
     skills = relationship("CandidateSkill", back_populates="candidate", cascade="all, delete-orphan")
@@ -36,7 +40,9 @@ class JobDescription(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, index=True, nullable=False)
     raw_text = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    # --- NEW COLUMN: Saves the Gemini extraction permanently ---
+    parsed_skills = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
     rankings = relationship("Ranking", back_populates="job")
@@ -49,8 +55,8 @@ class Ranking(Base):
     candidate_id = Column(Integer, ForeignKey("candidates.id", ondelete="CASCADE"))
     job_id = Column(Integer, ForeignKey("job_descriptions.id", ondelete="CASCADE"))
     score = Column(Float, nullable=False)
-    breakdown = Column(Text, nullable=True)  # Will store score JSON as a string split
-    ranked_at = Column(DateTime, default=datetime.utcnow)
+    breakdown = Column(JSONB, nullable=True)  # Upgraded to native PostgreSQL JSONB!
+    ranked_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
     candidate = relationship("Candidate", back_populates="rankings")

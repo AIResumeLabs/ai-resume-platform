@@ -1,15 +1,22 @@
 import logging
+from typing import List
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from sqlalchemy.orm import Session
-from backend.models.models import Candidate
+
 from backend.db.session import get_db
 from backend.services.pdf_parser import extract_text_from_pdf
 from nlp.extractor import parse_resume_text
+from backend.services import candidate_service 
 from backend.services.candidate_service import save_parsed_candidate
-
-# --- YOUR NEW IMPORTS ---
 from nlp.embedder import embedder_instance
 from vector_store.chroma_client import vector_db
+
+# Import Pydantic Schemas
+from backend.schemas.schemas import (
+    ResumeUploadResponse,
+    CandidateListResponse,
+    CandidateDetailResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +25,8 @@ router = APIRouter(
     tags=["resumes"]
 )
 
-@router.post("/upload")
+
+@router.post("/upload", response_model=ResumeUploadResponse, status_code=201)
 async def upload_resume(file: UploadFile = File(...), db: Session = Depends(get_db)):
     if file.content_type != "application/pdf":
         raise HTTPException(status_code=400, detail="Only PDF files are supported right now!")
@@ -31,7 +39,7 @@ async def upload_resume(file: UploadFile = File(...), db: Session = Depends(get_
     # 2. Parse structural entities via spaCy NLP
     parsed_profile = parse_resume_text(raw_text)
     
-    # 3. --- PERSIST AND SAVE RESULTS TO SQLITE ---
+    # 3. Persist to PostgreSQL
     db_candidate = save_parsed_candidate(
         db=db, 
         parsed_data=parsed_profile, 
@@ -39,12 +47,10 @@ async def upload_resume(file: UploadFile = File(...), db: Session = Depends(get_
         filename=file.filename
     )
     
-    # 4. --- GENERATE EMBEDDINGS AND SAVE TO CHROMADB ---
+    # 4. Generate embeddings and save to ChromaDB
     try:
-        # Convert the parsed dictionary into a math vector
         resume_vector = embedder_instance.embed_candidate(parsed_profile)
         
-        # Save it to ChromaDB, linked to the exact SQLite candidate ID
         vector_db.add_resume(
             candidate_id=db_candidate.id,
             vector=resume_vector,
@@ -55,10 +61,7 @@ async def upload_resume(file: UploadFile = File(...), db: Session = Depends(get_
         )
     except Exception as e:
         logger.error(f"Failed to save vector to ChromaDB: {str(e)}")
-        # We don't raise an exception here because the SQLite save worked, 
-        # but we definitely want to log it if the AI part fails.
 
-    
     return {
         "candidate_id": db_candidate.id,
         "filename": db_candidate.file_path,
@@ -72,11 +75,8 @@ async def upload_resume(file: UploadFile = File(...), db: Session = Depends(get_
         }
     }
 
-# Inside backend/routers/resumes.py - Update your GET endpoints:
 
-from backend.services import candidate_service  # Ensure this import is present at the top
-
-@router.get("/")
+@router.get("/", response_model=List[CandidateListResponse])
 async def list_candidates(db: Session = Depends(get_db)):
     logger.info("Fetching all candidates via service layer.")
     candidates = candidate_service.get_all_candidates(db)
@@ -91,13 +91,16 @@ async def list_candidates(db: Session = Depends(get_db)):
     } for c in candidates]
 
 
-@router.get("/{candidate_id}")
+@router.get("/{candidate_id}", response_model=CandidateDetailResponse)
 async def get_candidate_by_id(candidate_id: int, db: Session = Depends(get_db)):
     logger.info(f"Fetching candidate record for ID: {candidate_id} via service layer.")
     candidate = candidate_service.get_candidate_by_id(db, candidate_id)
     
     if not candidate:
-        raise HTTPException(status_code=404, detail=f"Candidate with ID {candidate_id} not found.")
+        raise HTTPException(
+            status_code=404, 
+            detail=f"Candidate with ID {candidate_id} not found."
+        )
         
     return {
         "candidate_id": candidate.id,
