@@ -28,10 +28,10 @@ Traditional ATS platforms rely on rigid keyword matching, leading to "keyword st
 * A [Google Gemini API Key](https://aistudio.google.com/).
 
 ### 1. Clone the Repository
-'''bash 
+```bash
 git clone https://github.com/AIResumeLabs/ai-resume-platform.git
 cd ai-resume-platform
-'''
+```
 
 ### 2. Configure Environment Variables
 
