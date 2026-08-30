@@ -4,6 +4,15 @@ A containerized, full-stack Applicant Tracking System (ATS) that leverages a cus
 
 Traditional ATS platforms rely on rigid keyword matching, leading to "keyword stuffing" exploits and missed talent. This platform solves that by utilizing a domain-agnostic, multi-layered AI pipeline that extracts literal skills, infers semantic proficiencies, and ranks candidates against job descriptions using 384-dimensional vector embeddings.
 
+
+## 📸 Preview
+
+![Dashboard Overview](assets/dashboard.png)
+
+![Candidate Leaderboard](assets/ranking.png)
+
+![Match Analysis Breakdown](assets/analysis.png)
+
 ## 🚀 Key Features
 
 * **Two-Pass LLM Extraction Pipeline:** Separates literal data scanning from semantic inference using Gemini 2.5 Flash. This mitigates LLM cognitive load and hallucination, generating evidence-backed proficiency scores (1–5) and neutralizing ATS keyword-stuffing exploits.
