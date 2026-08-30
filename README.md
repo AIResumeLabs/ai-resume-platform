@@ -30,6 +30,97 @@ Traditional ATS platforms rely on rigid keyword matching, leading to "keyword st
 * **Vector Store:** ChromaDB
 * **DevOps & Profiling:** Docker, Docker Compose, py-spy
 
+## 🏗️ Architecture Overview
+
+The platform is a three-tier system: a Streamlit frontend, a FastAPI backend that owns all business logic, and two persistence layers (PostgreSQL for structured data, ChromaDB for vector search). The two-pass LLM pipeline is just one piece — end-to-end, a request flows through parsing, extraction, embedding, storage, and ranking stages that live in distinct service modules.
+
+### System Diagram
+
+```mermaid
+flowchart LR
+    FE["Streamlit Frontend"] <-->|HTTP| BE["FastAPI Backend<br/>(routers/)"]
+    BE --> SV["services/<br/>business logic"]
+    SV --> NLP["nlp/<br/>Gemini + embedder"]
+    SV --> VS["vector_store/<br/>ChromaDB client"]
+    SV --> DB[("PostgreSQL<br/>via SQLAlchemy + Alembic")]
+    NLP --> VS
+```
+
+### Flow 1 — Resume Upload
+
+1. `routers/resume.py` receives the uploaded PDF.
+2. `services/pdf_parser.py` extracts raw text from the file.
+3. `nlp/extractor.py` runs the **Two-Pass LLM Pipeline** (literal extraction → semantic scoring) on that text.
+4. `services/candidate_service.py` persists the structured candidate profile to PostgreSQL.
+5. `nlp/embedder.py` converts the candidate's skill profile into a 384-dimensional vector.
+6. That vector is written to ChromaDB (`vector_store/`), tagged with the candidate's ID for later retrieval.
+
+### Flow 2 — Job Creation & Matching
+
+1. `routers/jobs.py` receives a job title + requirements text.
+2. `services/job_service.py` calls `nlp/extractor.py`'s JD parser, which returns a **weighted skill list** (each skill scored 1–5 on importance).
+3. The weighted skills are stored alongside the job in PostgreSQL.
+4. On a match request, `services/ranking_service.py`:
+   - Embeds the job text and queries ChromaDB for a pool of semantically similar candidates.
+   - Runs each candidate's stored skills against the job's weighted requirements using alias/category-aware skill matching (handles synonyms like `js` ↔ `javascript`, and hierarchical matches like `sqlalchemy` ↔ `orm`).
+   - Combines skill-match score (80%) with raw vector similarity (20%) into a final ranked score, with an additional multiplier if critical (high-weight) skills are missing.
+5. Results are returned to the frontend and (for the final top-K) persisted to a `Ranking` table for history.
+
+### 🧠 Two-Pass LLM Pipeline (Extraction Detail)
+
+To ensure high fidelity in data extraction, resumes are routed through two distinct AI phases:
+
+1. **Pass 1 (Literal Extraction):** Scans the raw text with strict constraints to *only* extract explicit, literal skills and keywords. No inference or evaluation is allowed.
+2. **Pass 2 (Semantic Inference & Scoring):** Feeds the literal list and original text back to the LLM to deduplicate terms, infer foundational skills based on context (e.g., inferring "Problem Solving" from high competitive programming ratings), and assign a 1–5 proficiency score backed by specific quoted achievements from the text.
+
+### Data Layer
+
+- **PostgreSQL** stores structured records — candidates, job descriptions, and rankings — managed through SQLAlchemy models (`backend/models/`) with schema changes tracked via Alembic migrations (`alembic/`).
+- **ChromaDB** stores the 384-dimensional embeddings used for semantic similarity search, kept separate from PostgreSQL since vector similarity queries and relational queries have very different access patterns.
+
+## 📁 Project Structure
+
+```
+.
+├── alembic/                  # Database migration scripts (Alembic)
+├── alembic.ini                # Alembic configuration
+├── assets/                    # README images/screenshots
+├── backend/
+│   ├── main.py                 # FastAPI app entrypoint
+│   ├── db/
+│   │   └── session.py           # DB session/engine setup
+│   ├── models/
+│   │   └── models.py            # SQLAlchemy ORM models (Candidate, JobDescription, Ranking)
+│   ├── routers/
+│   │   ├── jobs.py               # /api/jobs endpoints
+│   │   └── resume.py             # /api/resumes endpoints
+│   ├── schemas/
+│   │   └── schemas.py            # Pydantic request/response models
+│   └── services/
+│       ├── candidate_service.py  # Candidate persistence logic
+│       ├── job_service.py        # Job persistence + JD parsing trigger
+│       ├── pdf_parser.py         # PDF to raw text extraction
+│       └── ranking_service.py    # Dynamic weighted skill-matching engine
+├── chroma_db/                 # Persisted ChromaDB vector store (Docker volume)
+├── frontend/
+│   └── frontend_app.py         # Streamlit UI
+├── nlp/
+│   ├── embedder.py              # Sentence-Transformers embedding wrapper
+│   └── extractor.py             # Two-pass Gemini extraction + JD parsing
+├── scripts/
+│   └── backfill_vectors.py     # One-off script to re-embed existing candidates
+├── tests/                     # Test suite
+├── vector_store/               # ChromaDB client wrapper
+├── Dockerfile.backend
+├── Dockerfile.frontend
+├── docker-compose.yml
+├── requirements.txt            # Backend dependencies
+├── requirements-frontend.txt   # Frontend dependencies
+├── LICENSE
+└── README.md
+```
+
+
 ## 🚦 Getting Started
 
 ### Prerequisites
