@@ -15,7 +15,7 @@ Traditional ATS platforms rely on rigid keyword matching, leading to "keyword st
 
 ## 🚀 Key Features
 
-* **Two-Pass LLM Extraction Pipeline:** Separates literal data scanning from semantic inference using Gemini 2.5 Flash. This mitigates LLM cognitive load and hallucination, generating evidence-backed proficiency scores (1–5) and neutralizing ATS keyword-stuffing exploits.
+* **Two-Pass LLM Extraction Pipeline:** Separates literal data scanning from semantic inference using Gemini 3.6 Flash. This mitigates LLM cognitive load and hallucination, generating evidence-backed proficiency scores (1–5) and neutralizing ATS keyword-stuffing exploits.
 * **Domain-Agnostic Semantic Ranking:** Evaluates resumes across any industry by dynamically aligning candidate capabilities against LLM-extracted job priorities using ChromaDB vector retrieval (`all-MiniLM-L6-v2`) and a custom weighted scoring matrix.
 * **Production-Grade Infrastructure:** Fully containerized with Docker Compose, integrating a FastAPI/PostgreSQL backend with a Streamlit frontend and seamless Alembic schema migrations across isolated database volumes.
 * **Security & Reliability:** Implements strict JSON-schema constraints, prompt-level injection mitigation for untrusted PDF inputs, and deterministic regex fallbacks for PII extraction.
@@ -26,7 +26,7 @@ Traditional ATS platforms rely on rigid keyword matching, leading to "keyword st
 * **Frontend:** Streamlit
 * **Backend:** FastAPI, Python, Uvicorn
 * **Database & ORM:** PostgreSQL, SQLAlchemy, Alembic (Migrations)
-* **AI & NLP:** Google Gemini 2.5 Flash, Sentence Transformers
+* **AI & NLP:** Google Gemini 3.6 Flash, Sentence Transformers
 * **Vector Store:** ChromaDB
 * **DevOps & Profiling:** Docker, Docker Compose, py-spy
 
