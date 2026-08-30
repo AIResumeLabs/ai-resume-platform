@@ -2,20 +2,62 @@ import streamlit as st
 import requests
 import pandas as pd
 import os
+
 # This tells it: "If you are in Docker, use the Docker URL. If you are local, use 127.0.0.1"
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 st.set_page_config(page_title="AI Resume Matcher", page_icon="🔮", layout="wide")
 
+# Acronyms that should stay fully uppercase instead of Python's .title()
+# turning them into "Sql", "Aws", "Api" etc.
+SKILL_ACRONYMS = {
+    "sql", "aws", "api", "rest", "orm", "jwt", "oauth", "ci", "cd",
+    "ui", "ux", "css", "html", "js", "ts", "ml", "nlp", "k8s", "gcp",
+    "llm", "s3", "ec2", "cpp", "csharp",
+}
+
+
+def display_skill_name(skill: str) -> str:
+    """Title-cases a skill name while keeping known acronyms fully uppercase."""
+    skill = (skill or "").strip()
+    if not skill:
+        return skill
+    words = []
+    for w in skill.split():
+        words.append(w.upper() if w.lower() in SKILL_ACRONYMS else w.capitalize())
+    return " ".join(words)
+
+
 # ==========================================
 # REAL-TIME API HELPERS
 # ==========================================
+@st.cache_data(ttl=5)
 def fetch_active_jobs():
-    """Fetches jobs in real-time. Local DBs are so fast that caching causes stale UI issues."""
+    """Fetches jobs in real-time and reports backend connectivity.
+
+    Returns (jobs_list, error_message). error_message is None when the
+    backend responded successfully — this is what lets the UI distinguish
+    "no jobs created yet" from "backend is unreachable", which the
+    original version could not do (both looked identical: an empty list).
+
+    Cached briefly (ttl=5s) so that switching the job dropdown or other
+    unrelated reruns don't re-pay a full request/timeout every time. Right
+    after creating a job, the code below explicitly calls
+    fetch_active_jobs.clear() before rerunning, so the new job still shows
+    up immediately — the original no-cache behavior is preserved exactly
+    where it actually matters.
+    """
     try:
         res = requests.get(f"{BACKEND_URL}/api/jobs/", timeout=5)
-        return res.json() if res.status_code == 200 else []
-    except Exception:
-        return []
+        if res.status_code == 200:
+            return res.json(), None
+        return [], f"Backend returned HTTP {res.status_code}."
+    except requests.exceptions.ConnectionError:
+        return [], f"Cannot reach backend at {BACKEND_URL}. Is it running?"
+    except requests.exceptions.Timeout:
+        return [], "Backend request timed out."
+    except Exception as e:
+        return [], f"Unexpected error contacting backend: {e}"
+
 
 # ==========================================
 # CUSTOM CSS INJECTION (Premium SaaS Theme)
@@ -23,78 +65,279 @@ def fetch_active_jobs():
 def inject_custom_css():
     st.markdown("""
     <style>
-        /* Global Theme */
-        .stApp {
-            background-color: #0E1117;
-            color: #E0E6ED;
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+
+        html, body, [class*="css"] {
+            font-family: 'Inter', sans-serif;
         }
-        
-        /* Glassmorphism Cards for Candidate Outputs */
-        .glass-card {
-            background: rgba(26, 28, 35, 0.6);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 12px;
-            padding: 24px;
-            margin-bottom: 10px;
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-        .glass-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 12px 40px 0 rgba(0, 229, 255, 0.1);
+        h1, h2, h3, h4, h5, h6 {
+            font-family: 'Space Grotesk', sans-serif !important;
+            letter-spacing: -0.02em;
         }
 
-        /* Custom Glowing Score Badge */
-        .score-badge {
-            background: linear-gradient(135deg, #00E676 0%, #1DE9B6 100%);
-            color: #000000;
-            padding: 6px 14px;
+        /* Global Theme — a slow-moving ambient gradient instead of a flat
+           background. Fixed so it doesn't scroll with content, and sits
+           behind everything via a negative z-index. */
+        .stApp {
+            background-color: #0A0C10;
+            color: #E0E6ED;
+        }
+        .stApp::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            background:
+                radial-gradient(circle at 15% 20%, rgba(101, 31, 255, 0.16) 0%, transparent 45%),
+                radial-gradient(circle at 85% 15%, rgba(0, 229, 255, 0.12) 0%, transparent 45%),
+                radial-gradient(circle at 50% 90%, rgba(0, 230, 118, 0.08) 0%, transparent 50%);
+            background-size: 200% 200%;
+            animation: aurora-drift 22s ease-in-out infinite;
+            pointer-events: none;
+        }
+        @keyframes aurora-drift {
+            0%   { background-position: 0% 0%; }
+            50%  { background-position: 100% 60%; }
+            100% { background-position: 0% 0%; }
+        }
+        /* Keep Streamlit's own content above the aurora layer */
+        .stApp > header, .stApp [data-testid="stAppViewContainer"] {
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Custom scrollbar to match the theme */
+        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(0, 229, 255, 0.35); }
+
+        /* Deeper Glassmorphism Cards for Candidate Outputs */
+        .glass-card {
+            position: relative;
+            background: linear-gradient(160deg, rgba(38, 41, 51, 0.55) 0%, rgba(20, 22, 28, 0.55) 100%);
+            backdrop-filter: blur(20px) saturate(140%);
+            -webkit-backdrop-filter: blur(20px) saturate(140%);
+            border: 1px solid rgba(255, 255, 255, 0.09);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 12px;
+            box-shadow:
+                0 8px 32px 0 rgba(0, 0, 0, 0.35),
+                inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
+            transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+                        box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+                        border-color 0.25s ease;
+            animation: card-fade-in 0.4s ease-out;
+        }
+        .glass-card::before {
+            /* a soft top-edge highlight, like light catching glass */
+            content: "";
+            position: absolute;
+            top: 0; left: 16px; right: 16px;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
+        }
+        .glass-card:hover {
+            transform: translateY(-3px);
+            border-color: rgba(0, 229, 255, 0.25);
+            box-shadow:
+                0 16px 48px 0 rgba(0, 0, 0, 0.4),
+                0 0 32px 0 rgba(0, 229, 255, 0.12),
+                inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
+        }
+        @keyframes card-fade-in {
+            from { opacity: 0; transform: translateY(6px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Score badges — three tiers, each with a soft glow matched to its
+           gradient so they read as "lit up" rather than flat pills. */
+        .score-badge, .score-badge-low, .score-badge-critical {
+            padding: 6px 16px;
             border-radius: 20px;
             font-weight: 800;
             font-size: 1.1em;
-            box-shadow: 0 0 15px rgba(0, 230, 118, 0.4);
             display: inline-block;
             float: right;
+            border: 1px solid rgba(255, 255, 255, 0.18);
         }
-        
-        /* Neutral Score Badge */
+        .score-badge {
+            background: linear-gradient(135deg, #00E676 0%, #1DE9B6 100%);
+            color: #06120B;
+            box-shadow: 0 0 20px rgba(0, 230, 118, 0.45);
+        }
         .score-badge-low {
             background: linear-gradient(135deg, #FF9100 0%, #FF3D00 100%);
             color: #FFFFFF;
-            padding: 6px 14px;
-            border-radius: 20px;
-            font-weight: 800;
-            font-size: 1.1em;
-            box-shadow: 0 0 15px rgba(255, 61, 0, 0.4);
-            display: inline-block;
-            float: right;
+            box-shadow: 0 0 20px rgba(255, 61, 0, 0.45);
+        }
+        .score-badge-critical {
+            background: linear-gradient(135deg, #D50000 0%, #6A0000 100%);
+            color: #FFFFFF;
+            box-shadow: 0 0 20px rgba(213, 0, 0, 0.5);
         }
 
-        /* Streamlit Button Primary Override */
+        /* Insight callout inside each candidate's expander — thin glass
+           strip with a colored left accent instead of a flat fill. */
+        .insight-callout {
+            border-radius: 10px;
+            padding: 12px 18px;
+            margin-bottom: 18px;
+            font-size: 0.95em;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border-left: 3px solid transparent;
+        }
+        .insight-good {
+            background: rgba(0, 230, 118, 0.07);
+            border: 1px solid rgba(0, 230, 118, 0.25);
+            border-left: 3px solid #00E676;
+        }
+        .insight-warning {
+            background: rgba(255, 145, 0, 0.07);
+            border: 1px solid rgba(255, 145, 0, 0.25);
+            border-left: 3px solid #FF9100;
+        }
+        .insight-neutral {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-left: 3px solid rgba(255, 255, 255, 0.3);
+        }
+
+        /* Backend connectivity banner — glass instead of flat red */
+        .status-banner-error {
+            background: rgba(58, 18, 18, 0.55);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 82, 82, 0.4);
+            border-radius: 10px;
+            padding: 12px 18px;
+            margin-bottom: 20px;
+            color: #ffb4b4;
+            box-shadow: 0 0 20px rgba(255, 82, 82, 0.12);
+        }
+
+        /* Bordered st.container(border=True) blocks get the glass treatment
+           too, so the Ingest Center panels match the leaderboard cards.
+           NOTE: this targets Streamlit's current internal test-id for
+           bordered containers — if a future Streamlit version renames it,
+           this selector may need updating (inspect the element to find the
+           new attribute). Everything else in this stylesheet is unaffected
+           either way. */
+        div[data-testid="stVerticalBlockBorderWrapper"] {
+            background: linear-gradient(160deg, rgba(38, 41, 51, 0.45) 0%, rgba(20, 22, 28, 0.45) 100%);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            border-radius: 16px !important;
+            box-shadow: 0 8px 28px 0 rgba(0, 0, 0, 0.3), inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+        }
+
+        /* Expanders, tabs, and the selectbox get a subtle glass surface too,
+           so the whole page feels like one consistent material. */
+        div[data-testid="stExpander"] {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+        }
+        div[data-testid="stTabs"] button[role="tab"] {
+            border-radius: 8px 8px 0 0;
+            transition: color 0.2s ease;
+        }
+        div[data-baseweb="select"] > div {
+            background: rgba(255, 255, 255, 0.04) !important;
+            border-radius: 10px !important;
+            border-color: rgba(255, 255, 255, 0.12) !important;
+        }
+
+        /* Streamlit Button Primary Override — animated gradient sheen */
         div[data-testid="stButton"] > button[kind="primary"] {
             background: linear-gradient(135deg, #651FFF 0%, #00E5FF 100%);
             color: white;
             border: none;
-            border-radius: 8px;
+            border-radius: 10px;
             font-weight: 600;
-            transition: all 0.3s ease;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         }
         div[data-testid="stButton"] > button[kind="primary"]:hover {
-            box-shadow: 0 6px 20px rgba(0, 229, 255, 0.4);
+            transform: translateY(-1px);
+            box-shadow: 0 8px 24px rgba(0, 229, 255, 0.35);
             color: white;
+        }
+        div[data-testid="stButton"] > button[kind="primary"]:active {
+            transform: translateY(0px);
+        }
+
+        /* st.metric widgets — tighten up spacing and give the number more
+           visual weight, consistent with the Space Grotesk headers. */
+        div[data-testid="stMetricValue"] {
+            font-family: 'Space Grotesk', sans-serif;
         }
     </style>
     """, unsafe_allow_html=True)
 
+
 inject_custom_css()
+
+
+def badge_class_for(insight: str, score) -> str:
+    """Picks the badge tier from the backend's own semantic insight rather
+    than an arbitrary score cutoff, so the badge agrees with the text
+    underneath it instead of potentially contradicting it."""
+    insight = insight or ""
+    if insight.startswith("⚠️") and "Missing required" in insight:
+        return "score-badge-critical"
+    if insight.startswith("⚠️"):
+        return "score-badge-low"
+    if insight.startswith("⭐"):
+        return "score-badge"
+    return "score-badge" if score >= 75 else "score-badge-low"
+
+
+def insight_css_class(insight: str) -> str:
+    insight = insight or ""
+    if insight.startswith("⭐"):
+        return "insight-good"
+    if insight.startswith("⚠️"):
+        return "insight-warning"
+    return "insight-neutral"
+
 
 # ==========================================
 # HEADER SECTION
 # ==========================================
-st.markdown("<h1 style='text-align: center; margin-bottom: 0;'>🔮 Nexus AI Matchmaker</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #8B949E; margin-bottom: 40px;'>Semantic vector intelligence for precision talent acquisition.</p>", unsafe_allow_html=True)
+st.markdown(
+    """<h1 style='text-align: center; margin-bottom: 0; font-size: 2.6em;
+    background: linear-gradient(135deg, #FFFFFF 30%, #9BA6B4 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;'>
+    🔮 Nexus AI Matchmaker</h1>""",
+    unsafe_allow_html=True,
+)
+st.markdown("<p style='text-align: center; color: #8B949E; margin-bottom: 20px; font-size: 1.05em;'>Semantic vector intelligence for precision talent acquisition.</p>", unsafe_allow_html=True)
+
+# Fetch jobs ONCE here and reuse the result below — the original code called
+# this again inside column 2, doubling the network cost on every render.
+jobs_list, backend_error = fetch_active_jobs()
+
+if backend_error:
+    col_banner, col_retry = st.columns([5, 1])
+    with col_banner:
+        st.markdown(
+            f"""<div class="status-banner-error">
+            🔴 <strong>Backend Unreachable</strong> — {backend_error}
+            </div>""",
+            unsafe_allow_html=True,
+        )
+    with col_retry:
+        if st.button("🔄 Retry", use_container_width=True):
+            fetch_active_jobs.clear()
+            st.rerun()
+
+st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
 
 # Create two clean columns
 col1, col2 = st.columns([1, 1.8], gap="large")
@@ -104,24 +347,41 @@ col1, col2 = st.columns([1, 1.8], gap="large")
 # ==========================================
 with col1:
     st.markdown("### 📥 Ingest Center")
-    
+
+    # Session-state counter used to reset the file_uploader widget after a
+    # successful upload — otherwise the same file stays "loaded" in the
+    # widget and a user could accidentally resubmit it.
+    if "uploader_key" not in st.session_state:
+        st.session_state.uploader_key = 0
+
     # --- 1. Resume Upload Component ---
-    with st.container(border=True): 
+    with st.container(border=True):
         st.markdown("#### 📄 Add Candidate Resume")
-        uploaded_file = st.file_uploader("Drop PDF resume here", type=["pdf"], label_visibility="collapsed")
-        
+        uploaded_file = st.file_uploader(
+            "Drop PDF resume here",
+            type=["pdf"],
+            label_visibility="collapsed",
+            key=f"resume_uploader_{st.session_state.uploader_key}",
+        )
+
         if st.button("Extract & Vectorize ⚡", type="primary", use_container_width=True):
             if uploaded_file is not None:
                 with st.spinner("Extracting text and saving to database..."):
                     files = {"file": (uploaded_file.name, uploaded_file.getvalue(), "application/pdf")}
                     try:
-                        res = requests.post(f"{BACKEND_URL}/api/resumes/upload", files=files, timeout=30)
-                        if res.status_code == 201 or res.status_code == 200:
+                        res = requests.post(f"{BACKEND_URL}/api/resumes/upload", files=files, timeout=120)
+                        if res.status_code in (200, 201):
                             st.success(f"Successfully vectorized {uploaded_file.name}!")
+                            st.session_state.uploader_key += 1  # reset the widget
+                            st.rerun()
                         else:
                             st.error(f"Error: {res.json().get('detail', 'Unknown error')}")
+                    except requests.exceptions.ConnectionError:
+                        st.error(f"Cannot reach backend at {BACKEND_URL}.")
+                    except requests.exceptions.Timeout:
+                        st.error("Upload timed out — the backend may be overloaded.")
                     except requests.exceptions.RequestException:
-                        st.error("Backend offline or request timed out.")
+                        st.error("Backend offline or request failed.")
             else:
                 st.warning("Please select a PDF file first.")
 
@@ -131,22 +391,27 @@ with col1:
         with st.form("job_creation_form", clear_on_submit=True):
             job_title = st.text_input("Job Title", placeholder="e.g. Senior FastAPI Engineer")
             job_text = st.text_area("Job Requirements", placeholder="Paste the technical requirements here...", height=120)
-            
+
             submitted = st.form_submit_button("Save Target Profile", type="primary", use_container_width=True)
-            
+
             if submitted:
                 if job_title.strip() and job_text.strip():
                     with st.spinner("Generating job embeddings..."):
                         payload = {"title": job_title, "raw_text": job_text}
                         try:
-                            res = requests.post(f"{BACKEND_URL}/api/jobs/", json=payload, timeout=30)
-                            if res.status_code == 201 or res.status_code == 200:
+                            res = requests.post(f"{BACKEND_URL}/api/jobs/", json=payload, timeout=120)
+                            if res.status_code in (200, 201):
                                 st.success("Target profile locked and saved.")
-                                st.rerun()  # Forces UI to instantly update dropdown!
+                                fetch_active_jobs.clear()  # invalidate cache so it shows up immediately
+                                st.rerun()
                             else:
                                 st.error(f"Server error: {res.text}")
+                        except requests.exceptions.ConnectionError:
+                            st.error(f"Cannot reach backend at {BACKEND_URL}.")
+                        except requests.exceptions.Timeout:
+                            st.error("Request timed out — the backend may be overloaded.")
                         except requests.exceptions.RequestException:
-                            st.error("Backend offline or request timed out.")
+                            st.error("Backend offline or request failed.")
                 else:
                     st.warning("Title and Requirements are mandatory.")
 
@@ -155,40 +420,43 @@ with col1:
 # ==========================================
 with col2:
     st.markdown("### 📊 Semantic Ranking Engine")
-    
-    jobs_list = fetch_active_jobs()
 
     if jobs_list:
         job_options = {j["title"]: j["id"] for j in jobs_list}
         selected_job_title = st.selectbox("Select Target Profile", options=list(job_options.keys()), label_visibility="collapsed")
         selected_job_id = job_options[selected_job_title]
-        
+
         if st.button("Run Semantic Match 🚀", type="primary", use_container_width=True):
             with st.spinner("Calculating cosine distances and AI proficiency scores..."):
                 try:
-                    rank_res = requests.get(f"{BACKEND_URL}/api/jobs/{selected_job_id}/match", timeout=60)
-                    
+                    rank_res = requests.get(f"{BACKEND_URL}/api/jobs/{selected_job_id}/match", timeout=120)
+
                     if rank_res.status_code == 200:
                         response_json = rank_res.json()
                         rankings_data = response_json.get("matches", [])
-                        
+
                         if not rankings_data:
                             st.info("No candidates found in the vector database.")
                         else:
                             tab1, tab2 = st.tabs(["🏆 Global Leaderboard", "📈 Analytics Insights"])
-                            
+
                             # --- TAB 1: LEADERBOARD & DEEP DIVES ---
                             with tab1:
-                                st.write("") 
+                                st.write("")
                                 for i, item in enumerate(rankings_data, start=1):
-                                    score = item.get('score', item.get('match_score', 0))
+                                    # Backend keys are 'match_score' and 'matched_skills' —
+                                    # reading them directly instead of the previous
+                                    # dual-key fallback (item.get('score', item.get('match_score', 0)))
+                                    # which only ever worked because 'score' never existed.
+                                    score = item.get('match_score', 0)
                                     name = item.get('name', 'Unknown Candidate')
                                     email = item.get('email', 'No Email Provided')
-                                    skills = item.get('breakdown', item.get('matched_skills', []))
-                                    
-                                    badge_class = "score-badge" if score >= 75 else "score-badge-low"
-                                    
-                                    # Render the high-level card
+                                    skills = item.get('matched_skills', [])
+                                    insight = item.get('insights', '')
+                                    breakdown = item.get('detailed_breakdown', {})
+
+                                    badge_class = badge_class_for(insight, score)
+
                                     card_html = f"""
                                     <div class="glass-card">
                                         <h3 style="margin-top: 0;">#{i} {name} <span class="{badge_class}">{score}%</span></h3>
@@ -196,40 +464,55 @@ with col2:
                                     </div>
                                     """
                                     st.markdown(card_html, unsafe_allow_html=True)
-                                    
-                                    # Streamlit Native Expander for Deep Dive
+
                                     with st.expander(f"🔍 View Match Analysis for {name}"):
-                                        st.markdown(f"**Overall Semantic Match:**")
-                                        st.progress(int(score) / 100)
-                                        
+                                        # Surface the backend's own qualitative insight —
+                                        # this was computed but never shown before.
+                                        if insight:
+                                            st.markdown(
+                                                f'<div class="insight-callout {insight_css_class(insight)}">{insight}</div>',
+                                                unsafe_allow_html=True,
+                                            )
+
+                                        st.markdown("**Overall Semantic Match:**")
+                                        st.progress(min(1.0, max(0.0, score / 100)))
+
+                                        # Score breakdown — also computed by the backend
+                                        # and previously unused.
+                                        if breakdown:
+                                            b1, b2, b3 = st.columns(3)
+                                            b1.metric("Skill Match", f"{breakdown.get('impact_weighted_match', 0) * 100:.0f}%")
+                                            b2.metric("Semantic Affinity", f"{breakdown.get('vector_affinity', 0) * 100:.0f}%")
+                                            b3.metric("Critical Coverage", f"{breakdown.get('critical_skill_ratio', 0) * 100:.0f}%")
+
                                         st.markdown("---")
-                                        
-                                        # Split skills into Matches and Gaps with DEDUPLICATION
+
+                                        # Split skills into Matches and Gaps with deduplication
                                         matched_skills = []
                                         missing_skills = []
-                                        seen_matched_skills = set() # Track duplicates
-                                        seen_missing_skills = set() # Track duplicates
-                                        
+                                        seen_matched_skills = set()
+                                        seen_missing_skills = set()
+
                                         for s in skills:
                                             if isinstance(s, dict):
-                                                jd_skill_name = s.get("jd_skill", "").title()
-                                                
+                                                jd_skill_name = display_skill_name(s.get("jd_skill", ""))
+
                                                 if s.get("candidate_skill") == "MISSING":
                                                     if jd_skill_name not in seen_missing_skills:
                                                         missing_skills.append(jd_skill_name)
                                                         seen_missing_skills.add(jd_skill_name)
                                                 else:
-                                                    cand_skill = s.get("candidate_skill", "").title()
-                                                    # Deduplicate based on the extracted candidate skill
+                                                    cand_skill = display_skill_name(s.get("candidate_skill", ""))
                                                     if cand_skill not in seen_matched_skills:
                                                         matched_skills.append((cand_skill, s.get("proficiency", 0)))
                                                         seen_matched_skills.add(cand_skill)
                                             else:
+                                                # Legacy defensive path in case matched_skills
+                                                # is ever a flat list of strings instead of dicts.
                                                 if s not in seen_matched_skills:
                                                     matched_skills.append((s, "N/A"))
                                                     seen_matched_skills.add(s)
 
-                                        # Display side-by-side analysis
                                         skill_col1, skill_col2 = st.columns(2)
                                         with skill_col1:
                                             st.markdown("#### ✅ Verified Matches")
@@ -238,7 +521,7 @@ with col2:
                                                     st.markdown(f"- **{skill}** *(Proficiency: {prof}/5)*")
                                             else:
                                                 st.caption("No direct skills verified.")
-                                                
+
                                         with skill_col2:
                                             st.markdown("#### ❌ Skill Gaps")
                                             if missing_skills:
@@ -246,38 +529,46 @@ with col2:
                                                     st.markdown(f"- {missing}")
                                             else:
                                                 st.caption("No major skill gaps detected!")
-                                    
-                                    st.write("") # Spacer between candidates
-                                    
+
+                                    st.write("")
+
                             # --- TAB 2: ANALYTICS & INSIGHTS ---
                             with tab2:
                                 st.write("")
                                 with st.container(border=True):
                                     st.subheader("Cohort Analysis")
-                                    
-                                    scores = [c.get('score', c.get('match_score', 0)) for c in rankings_data]
+
+                                    scores = [c.get('match_score', 0) for c in rankings_data]
                                     avg_score = sum(scores) / len(scores) if scores else 0
-                                    
+
                                     m1, m2, m3 = st.columns(3)
                                     m1.metric("Total Candidates Scanned", len(rankings_data))
                                     m2.metric("Average Match Score", f"{avg_score:.1f}%")
-                                    m3.metric("Top Score", f"{scores[0]}%" if scores else "0%")
-                                    
+                                    # max() instead of scores[0] — don't silently assume
+                                    # the API response is sorted descending.
+                                    m3.metric("Top Score", f"{max(scores):.1f}%" if scores else "0%")
+
                                     st.markdown("---")
                                     st.markdown("#### Score Distribution")
-                                    
-                                    # Create a simple DataFrame for the bar chart
+
                                     df_scores = pd.DataFrame({
                                         "Candidate": [c.get('name', f"Candidate {i+1}") for i, c in enumerate(rankings_data)],
-                                        "Match %": scores
+                                        "Match %": scores,
                                     }).set_index("Candidate")
-                                    
-                                    # Streamlit native bar chart
+
                                     st.bar_chart(df_scores, color="#00E5FF", height=300)
-                                    
+
                     else:
                         st.error(f"Ranking endpoint failed: {rank_res.text}")
+                except requests.exceptions.ConnectionError:
+                    st.error(f"Cannot reach backend at {BACKEND_URL}.")
+                except requests.exceptions.Timeout:
+                    st.error("Ranking request timed out — try again or check backend load.")
                 except requests.exceptions.RequestException:
                     st.error("Error triggering ranking execution path: Backend offline or timed out.")
+    elif backend_error:
+        # Distinct from the "no jobs yet" case below — the banner above
+        # already explains this, so keep this secondary message short.
+        st.caption("Ranking engine is unavailable until the backend connection is restored.")
     else:
         st.info("Awaiting Job Profiles. Create one in the Ingest Center to begin.")

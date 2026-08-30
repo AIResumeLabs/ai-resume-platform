@@ -1,12 +1,13 @@
 import logging
 import json
 import re
+import time
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from backend.models.models import JobDescription, Candidate, Ranking
 from nlp.embedder import embedder_instance
 from vector_store.chroma_client import vector_db
-import time
+
 logger = logging.getLogger(__name__)
 
 # ==============================================================================
@@ -22,11 +23,10 @@ SKILL_ALIASES = {
     "cpp": "c++",
     "csharp": "c#",
     "postgres": "postgresql",
-    "problemsolving": "problem solving"
+    "problemsolving": "problem solving",
 }
 
-# --- NEW: HIERARCHICAL SKILL CATEGORIES ---
-# Maps broad JD requirements to specific candidate skills
+# Maps broad JD requirements to specific candidate skills (hierarchical match).
 SKILL_CATEGORIES = {
     "sql": ["sql", "mysql", "postgresql", "sqlite", "oracle", "sql server"],
     "orm": ["orm", "sqlalchemy", "hibernate", "prisma", "django orm"],
@@ -34,38 +34,61 @@ SKILL_CATEGORIES = {
     "rest api": ["rest api", "fastapi", "flask", "django", "express", "api"],
     "version control": ["version control", "git", "github", "gitlab", "bitbucket"],
     "aws": ["aws", "amazon web services", "ec2", "s3"],
-    "authentication": ["authentication", "jwt", "oauth", "auth", "security"]
+    "authentication": ["authentication", "jwt", "oauth", "auth", "security"],
 }
+
+# Minimum character length before two skill strings are allowed to match via
+# prefix/suffix containment (e.g. "react" / "reactjs", "postgres" /
+# "postgresql"). Below this length, containment checks are unsafe — e.g.
+# "go" is a substring of "django", "algorithm", and "mongo"; "r" or "c" would
+# match almost anything. Exact-string, alias, and category matches above are
+# unaffected by this guard and still work for short skill names.
+MIN_CONTAINMENT_LEN = 4
+
 
 def normalize_skill(name: str) -> str:
     name = (name or "").lower().strip()
     name = re.sub(r"[^a-z0-9+#. ]", "", name)
     return SKILL_ALIASES.get(name, name)
 
+
 def skills_match(jd_skill: str, cand_skill: str) -> bool:
-    """Matches exact strings, partial word boundaries, and hierarchical categories."""
+    """Matches exact strings, alias/category equivalence, safe prefix/suffix
+    containment, and word-bounded containment inside multi-word skill strings.
+    """
     if not jd_skill or not cand_skill:
         return False
-        
+
     jd_skill = jd_skill.strip()
     cand_skill = cand_skill.strip()
-    
+
     if jd_skill == cand_skill:
         return True
 
-    # 1. CATEGORY MATCHING (e.g., JD asks for "orm", candidate has "sqlalchemy")
+    # 1. CATEGORY MATCHING (e.g. JD asks for "orm", candidate has "sqlalchemy")
     for category, members in SKILL_CATEGORIES.items():
         if jd_skill == category and cand_skill in members:
             return True
-        # Reverse check: JD asks for "sqlalchemy", candidate just wrote "orm"
         if cand_skill == category and jd_skill in members:
             return True
 
-    # 2. SUBSTRING MATCHING (e.g., JD asks for "postgres", candidate has "postgresql")
-    if jd_skill in cand_skill or cand_skill in jd_skill:
-        return True
+    # 2. PREFIX/SUFFIX CONTAINMENT — guarded by a minimum length so short
+    # tokens ("go", "r", "c") can't accidentally match inside unrelated
+    # words ("django", "server", "css"). Real compound tech names are
+    # almost always prefix-based ("react"/"reactjs", "postgres"/
+    # "postgresql", "kube"/"kubernetes"), so prefix/suffix is enough —
+    # unlike a raw substring check, this won't match "go" inside "algorithm".
+    if len(jd_skill) >= MIN_CONTAINMENT_LEN and len(cand_skill) >= MIN_CONTAINMENT_LEN:
+        if cand_skill.startswith(jd_skill) or cand_skill.endswith(jd_skill):
+            return True
+        if jd_skill.startswith(cand_skill) or jd_skill.endswith(cand_skill):
+            return True
 
-    # 3. REGEX WORD BOUNDARY MATCHING
+    # 3. WORD-BOUNDARY CONTAINMENT — catches a skill appearing as a full
+    # token inside a longer multi-word skill string, e.g. jd_skill
+    # "rest api" appearing inside cand_skill "advanced rest api design".
+    # This is now reachable (unlike the original), since check #2 no
+    # longer swallows every containment case before this runs.
     pattern_a = r"(?<![\w+#]){}(?![\w+#])".format(re.escape(jd_skill))
     pattern_b = r"(?<![\w+#]){}(?![\w+#])".format(re.escape(cand_skill))
     return bool(re.search(pattern_a, cand_skill) or re.search(pattern_b, jd_skill))
@@ -118,10 +141,11 @@ def rank_candidate_dynamic(
     critical_skills_required = 0
     critical_skills_hit = 0
     critical_hit_ratio_sum = 0.0
-    matched_skills = []  
+    matched_skills = []
 
     for jd_skill, jd_weight in seen_jd_skills.items():
-        # FIX 1: Set the baseline expectation to 3.0 (Intermediate) instead of 5.0
+        # Baseline expectation is "Intermediate" (3.0), not "Expert" (5.0) —
+        # keeps the score from unfairly punishing solid-but-not-expert matches.
         total_possible_points += (jd_weight * 3.0)
         is_critical = jd_weight >= 4.0
         if is_critical:
@@ -150,7 +174,8 @@ def rank_candidate_dynamic(
                 if best_prof_score >= critical_hit_threshold:
                     critical_skills_hit += 1
         else:
-            # FIX 2: Expose missing skills so the frontend can display them!
+            # Expose missing skills so the frontend can display gaps, not
+            # just what matched.
             matched_skills.append({
                 "jd_skill": jd_skill,
                 "candidate_skill": "MISSING",
@@ -159,10 +184,16 @@ def rank_candidate_dynamic(
                 "critical": is_critical,
             })
 
-    # FIX 3: Cap core match at 1.0 (100%)
+    # Cap core match at 1.0 — an over-performing skill (prof 5 vs. baseline
+    # 3) can offset a shortfall elsewhere in the raw points math; this cap
+    # only prevents the ratio from exceeding 100%, it doesn't prevent that
+    # internal compensation. If you want a fully-missing required skill to
+    # always visibly cap the score below some ceiling regardless of
+    # overperformance elsewhere, that needs an explicit penalty term — flag
+    # this to revisit if you notice candidates missing a stated requirement
+    # still scoring unexpectedly high.
     core_match = min(1.0, (earned_points / total_possible_points)) if total_possible_points > 0 else 0.0
-    
-    # Soften the semantic scaling so vectors don't unfairly drag down good skill matches
+
     adjusted_similarity = max(0.0, min(1.0, safe_float(raw_similarity_score, 0.0)))
     base_score = (adjusted_similarity * 0.20) + (core_match * 0.80)
 
@@ -192,7 +223,7 @@ def rank_candidate_dynamic(
                 (critical_hit_ratio_sum / critical_skills_required) if critical_skills_required > 0 else 1.0, 2
             ),
         },
-        "matched_skills": matched_skills, 
+        "matched_skills": matched_skills,
         "insight_summary": insight,
     }
 
@@ -225,25 +256,33 @@ def rank_candidates_for_job(db: Session, job_id: int, top_k: int = 5, candidate_
 
     job_vector = embedder_instance.embed_text(job_text_to_embed)
 
-    # IMPORTANT: pull a much larger pool than top_k from the vector store.
-    # rank_candidate_dynamic weights skill-match at 80% vs 20% vector similarity,
-    # so a candidate who's semantically mediocre but skill-perfect can easily
-    # outrank the pure-vector top_k — but only if they're in the pool to begin with.
+    # Pull a much larger pool than top_k from the vector store.
+    # rank_candidate_dynamic weights skill-match at 80% vs 20% vector
+    # similarity, so a candidate who's semantically mediocre but
+    # skill-perfect can easily outrank the pure-vector top_k — but only if
+    # they're in the pool to begin with.
     retrieval_pool_size = max(top_k * candidate_pool_multiplier, 25)
-    # Start the high-precision timer
+
     search_start_time = time.perf_counter()
     chroma_results = vector_db.search_resumes(query_vector=job_vector, top_k=retrieval_pool_size)
-    # Stop the timer and convert to milliseconds
     search_duration_ms = (time.perf_counter() - search_start_time) * 1000
     logger.info(f"⚡ ChromaDB Vector Search Time: {search_duration_ms:.2f} ms")
+
     if not chroma_results:
         return []
+
+    # --- Batch-fetch every candidate in the pool in ONE query instead of
+    # one query per candidate (the original N+1 pattern here could mean
+    # 25+ round trips per ranking request). ---
+    candidate_ids = [match["candidate_id"] for match in chroma_results]
+    candidate_records = db.query(Candidate).filter(Candidate.id.in_(candidate_ids)).all()
+    candidate_map = {c.id: c for c in candidate_records}
 
     ranked_candidates = []
     pending_rankings = []
 
     for match in chroma_results:
-        candidate_record = db.query(Candidate).filter(Candidate.id == match["candidate_id"]).first()
+        candidate_record = candidate_map.get(match["candidate_id"])
 
         if not candidate_record:
             logger.warning(f"Candidate id={match['candidate_id']} in vector store but not found in DB, skipping")
@@ -270,7 +309,7 @@ def rank_candidates_for_job(db: Session, job_id: int, top_k: int = 5, candidate_
             "phone": candidate_record.phone,
             "filename": candidate_record.file_path,
             "match_score": percentage_score,
-            "matched_skills": advanced_metrics["matched_skills"],  # actual matches, not the raw skill dump
+            "matched_skills": advanced_metrics["matched_skills"],
             "insights": advanced_metrics["insight_summary"],
             "detailed_breakdown": advanced_metrics["breakdown"],
         })
@@ -280,16 +319,20 @@ def rank_candidates_for_job(db: Session, job_id: int, top_k: int = 5, candidate_
     ranked_candidates = ranked_candidates[:top_k]
     top_candidate_ids = {c["candidate_id"] for c in ranked_candidates}
 
-    # Batch persistence — one commit instead of one per candidate.
+    # --- Batch-fetch existing rankings for the final top_k in ONE query
+    # instead of one query per candidate. ---
+    existing_rankings = db.query(Ranking).filter(
+        Ranking.job_id == job.id,
+        Ranking.candidate_id.in_(top_candidate_ids),
+    ).all()
+    existing_ranking_map = {r.candidate_id: r for r in existing_rankings}
+
     try:
         for candidate_record, percentage_score, advanced_metrics in pending_rankings:
             if candidate_record.id not in top_candidate_ids:
                 continue  # only persist rankings for the final top_k, not the whole pool
-            existing_ranking = db.query(Ranking).filter(
-                Ranking.job_id == job.id,
-                Ranking.candidate_id == candidate_record.id
-            ).first()
 
+            existing_ranking = existing_ranking_map.get(candidate_record.id)
             if existing_ranking:
                 existing_ranking.score = percentage_score
                 existing_ranking.breakdown = json.dumps(advanced_metrics["breakdown"])

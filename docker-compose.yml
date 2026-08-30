@@ -31,13 +31,21 @@ services:
       dockerfile: Dockerfile.backend
     container_name: nexus_backend
     restart: always
+    # Runs pending Alembic migrations BEFORE starting uvicorn, every time the
+    # container starts. This is what was missing before: the backend was
+    # accepting traffic against a database that never had its tables created.
+    # If you'd rather keep this logic in the image itself, move this into an
+    # entrypoint.sh in Dockerfile.backend instead — functionally the same,
+    # just lives in the Dockerfile instead of here.
+    command: sh -c "alembic upgrade head && uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload"
     environment:
       - DATABASE_URL=postgresql://postgres:postgrespassword@db:5432/resume_matcher_db
       - GEMINI_API_KEY=${GEMINI_API_KEY}
     ports:
       - "8000:8000"
     volumes:
-      - chroma_data:/app/chroma_db
+      - .:/app                     # Mounts local codebase for live hot-reload
+      - chroma_data:/app/chroma_db # Keeps ChromaDB persistent
     depends_on:
       db:
         condition: service_healthy
@@ -55,6 +63,8 @@ services:
       - BACKEND_URL=http://backend:8000
     ports:
       - "8501:8501"
+    volumes:
+      - .:/app                     # Mounts local codebase for UI changes
     depends_on:
       - backend
 
