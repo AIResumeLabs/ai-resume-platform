@@ -60,27 +60,27 @@ def fetch_active_jobs():
 
 
 # ==========================================
-# CUSTOM CSS INJECTION (Premium SaaS Theme)
+# CUSTOM CSS INJECTION (Monochrome Blue/Purple Theme)
 # ==========================================
 def inject_custom_css():
     st.markdown("""
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap');
 
         html, body, [class*="css"] {
             font-family: 'Inter', sans-serif;
         }
         h1, h2, h3, h4, h5, h6 {
-            font-family: 'Space Grotesk', sans-serif !important;
-            letter-spacing: -0.02em;
+            font-family: 'Sora', sans-serif !important;
+            letter-spacing: -0.01em;
         }
 
-        /* Global Theme — a slow-moving ambient gradient instead of a flat
-           background. Fixed so it doesn't scroll with content, and sits
-           behind everything via a negative z-index. */
+        /* Global Theme — a slow-moving ambient gradient, blue/purple/indigo
+           only (no green). Fixed so it doesn't scroll with content, and
+           sits behind everything via a negative z-index. */
         .stApp {
-            background-color: #0A0C10;
-            color: #E0E6ED;
+            background-color: #06070B;
+            color: #E6E9F0;
         }
         .stApp::before {
             content: "";
@@ -88,11 +88,11 @@ def inject_custom_css():
             inset: 0;
             z-index: 0;
             background:
-                radial-gradient(circle at 15% 20%, rgba(101, 31, 255, 0.16) 0%, transparent 45%),
-                radial-gradient(circle at 85% 15%, rgba(0, 229, 255, 0.12) 0%, transparent 45%),
-                radial-gradient(circle at 50% 90%, rgba(0, 230, 118, 0.08) 0%, transparent 50%);
+                radial-gradient(circle at 12% 18%, rgba(124, 58, 237, 0.18) 0%, transparent 45%),
+                radial-gradient(circle at 88% 12%, rgba(0, 200, 255, 0.14) 0%, transparent 45%),
+                radial-gradient(circle at 50% 95%, rgba(79, 70, 229, 0.12) 0%, transparent 55%);
             background-size: 200% 200%;
-            animation: aurora-drift 22s ease-in-out infinite;
+            animation: aurora-drift 24s ease-in-out infinite;
             pointer-events: none;
         }
         @keyframes aurora-drift {
@@ -100,28 +100,26 @@ def inject_custom_css():
             50%  { background-position: 100% 60%; }
             100% { background-position: 0% 0%; }
         }
-        /* Keep Streamlit's own content above the aurora layer */
         .stApp > header, .stApp [data-testid="stAppViewContainer"] {
             position: relative;
             z-index: 1;
         }
 
-        /* Custom scrollbar to match the theme */
         ::-webkit-scrollbar { width: 10px; height: 10px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb {
             background: rgba(255, 255, 255, 0.15);
             border-radius: 10px;
         }
-        ::-webkit-scrollbar-thumb:hover { background: rgba(0, 229, 255, 0.35); }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(124, 58, 237, 0.4); }
 
-        /* Deeper Glassmorphism Cards for Candidate Outputs */
+        /* Glassmorphism cards for candidate results */
         .glass-card {
             position: relative;
-            background: linear-gradient(160deg, rgba(38, 41, 51, 0.55) 0%, rgba(20, 22, 28, 0.55) 100%);
+            background: linear-gradient(160deg, rgba(30, 32, 46, 0.55) 0%, rgba(14, 15, 22, 0.55) 100%);
             backdrop-filter: blur(20px) saturate(140%);
             -webkit-backdrop-filter: blur(20px) saturate(140%);
-            border: 1px solid rgba(255, 255, 255, 0.09);
+            border: 1px solid rgba(255, 255, 255, 0.08);
             border-radius: 16px;
             padding: 24px;
             margin-bottom: 12px;
@@ -134,19 +132,18 @@ def inject_custom_css():
             animation: card-fade-in 0.4s ease-out;
         }
         .glass-card::before {
-            /* a soft top-edge highlight, like light catching glass */
             content: "";
             position: absolute;
             top: 0; left: 16px; right: 16px;
             height: 1px;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
         }
         .glass-card:hover {
             transform: translateY(-3px);
-            border-color: rgba(0, 229, 255, 0.25);
+            border-color: rgba(124, 58, 237, 0.35);
             box-shadow:
                 0 16px 48px 0 rgba(0, 0, 0, 0.4),
-                0 0 32px 0 rgba(0, 229, 255, 0.12),
+                0 0 32px 0 rgba(124, 58, 237, 0.15),
                 inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
         }
         @keyframes card-fade-in {
@@ -154,8 +151,8 @@ def inject_custom_css():
             to   { opacity: 1; transform: translateY(0); }
         }
 
-        /* Score badges — three tiers, each with a soft glow matched to its
-           gradient so they read as "lit up" rather than flat pills. */
+        /* Score badges — blue/purple = strong, amber = caution, red = critical.
+           Green removed entirely to stay on-theme. */
         .score-badge, .score-badge-low, .score-badge-critical {
             padding: 6px 16px;
             border-radius: 20px;
@@ -166,14 +163,14 @@ def inject_custom_css():
             border: 1px solid rgba(255, 255, 255, 0.18);
         }
         .score-badge {
-            background: linear-gradient(135deg, #00E676 0%, #1DE9B6 100%);
-            color: #06120B;
-            box-shadow: 0 0 20px rgba(0, 230, 118, 0.45);
+            background: linear-gradient(135deg, #7C3AED 0%, #00C8FF 100%);
+            color: #FFFFFF;
+            box-shadow: 0 0 20px rgba(124, 58, 237, 0.45);
         }
         .score-badge-low {
             background: linear-gradient(135deg, #FF9100 0%, #FF3D00 100%);
             color: #FFFFFF;
-            box-shadow: 0 0 20px rgba(255, 61, 0, 0.45);
+            box-shadow: 0 0 20px rgba(255, 61, 0, 0.4);
         }
         .score-badge-critical {
             background: linear-gradient(135deg, #D50000 0%, #6A0000 100%);
@@ -181,8 +178,7 @@ def inject_custom_css():
             box-shadow: 0 0 20px rgba(213, 0, 0, 0.5);
         }
 
-        /* Insight callout inside each candidate's expander — thin glass
-           strip with a colored left accent instead of a flat fill. */
+        /* Insight callout — blue accent instead of green */
         .insight-callout {
             border-radius: 10px;
             padding: 12px 18px;
@@ -193,9 +189,9 @@ def inject_custom_css():
             border-left: 3px solid transparent;
         }
         .insight-good {
-            background: rgba(0, 230, 118, 0.07);
-            border: 1px solid rgba(0, 230, 118, 0.25);
-            border-left: 3px solid #00E676;
+            background: rgba(0, 200, 255, 0.07);
+            border: 1px solid rgba(0, 200, 255, 0.25);
+            border-left: 3px solid #00C8FF;
         }
         .insight-warning {
             background: rgba(255, 145, 0, 0.07);
@@ -208,7 +204,6 @@ def inject_custom_css():
             border-left: 3px solid rgba(255, 255, 255, 0.3);
         }
 
-        /* Backend connectivity banner — glass instead of flat red */
         .status-banner-error {
             background: rgba(58, 18, 18, 0.55);
             backdrop-filter: blur(10px);
@@ -221,15 +216,8 @@ def inject_custom_css():
             box-shadow: 0 0 20px rgba(255, 82, 82, 0.12);
         }
 
-        /* Bordered st.container(border=True) blocks get the glass treatment
-           too, so the Ingest Center panels match the leaderboard cards.
-           NOTE: this targets Streamlit's current internal test-id for
-           bordered containers — if a future Streamlit version renames it,
-           this selector may need updating (inspect the element to find the
-           new attribute). Everything else in this stylesheet is unaffected
-           either way. */
         div[data-testid="stVerticalBlockBorderWrapper"] {
-            background: linear-gradient(160deg, rgba(38, 41, 51, 0.45) 0%, rgba(20, 22, 28, 0.45) 100%);
+            background: linear-gradient(160deg, rgba(30, 32, 46, 0.45) 0%, rgba(14, 15, 22, 0.45) 100%);
             backdrop-filter: blur(16px);
             -webkit-backdrop-filter: blur(16px);
             border: 1px solid rgba(255, 255, 255, 0.08) !important;
@@ -237,8 +225,6 @@ def inject_custom_css():
             box-shadow: 0 8px 28px 0 rgba(0, 0, 0, 0.3), inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
         }
 
-        /* Expanders, tabs, and the selectbox get a subtle glass surface too,
-           so the whole page feels like one consistent material. */
         div[data-testid="stExpander"] {
             background: rgba(255, 255, 255, 0.03);
             border: 1px solid rgba(255, 255, 255, 0.08);
@@ -254,9 +240,9 @@ def inject_custom_css():
             border-color: rgba(255, 255, 255, 0.12) !important;
         }
 
-        /* Streamlit Button Primary Override — animated gradient sheen */
+        /* Primary buttons — blue/purple sheen, no green anywhere */
         div[data-testid="stButton"] > button[kind="primary"] {
-            background: linear-gradient(135deg, #651FFF 0%, #00E5FF 100%);
+            background: linear-gradient(135deg, #5B21B6 0%, #00C8FF 100%);
             color: white;
             border: none;
             border-radius: 10px;
@@ -265,17 +251,72 @@ def inject_custom_css():
         }
         div[data-testid="stButton"] > button[kind="primary"]:hover {
             transform: translateY(-1px);
-            box-shadow: 0 8px 24px rgba(0, 229, 255, 0.35);
+            box-shadow: 0 8px 24px rgba(0, 200, 255, 0.35);
             color: white;
         }
         div[data-testid="stButton"] > button[kind="primary"]:active {
             transform: translateY(0px);
         }
 
-        /* st.metric widgets — tighten up spacing and give the number more
-           visual weight, consistent with the Space Grotesk headers. */
         div[data-testid="stMetricValue"] {
-            font-family: 'Space Grotesk', sans-serif;
+            font-family: 'Sora', sans-serif;
+        }
+
+        /* KPI tiles for the three breakdown scores — bordered cards with a
+           colored value instead of bare floating numbers. Tier color is
+           chosen in Python (kpi_tier_color) and passed in via the style
+           attribute, so this class only defines the shared box shape. */
+        .kpi-tile {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.09);
+            border-radius: 14px;
+            padding: 16px 18px;
+            text-align: center;
+        }
+        .kpi-tile .kpi-label {
+            font-size: 0.8em;
+            color: #9AA4B2;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: 6px;
+        }
+        .kpi-tile .kpi-value {
+            font-family: 'Sora', sans-serif;
+            font-weight: 700;
+            font-size: 1.9em;
+        }
+
+        /* Skill chips — replace bullet lists with pill badges */
+        .chip-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 4px;
+        }
+        .chip-match {
+            background: rgba(0, 200, 255, 0.10);
+            border: 1px solid rgba(0, 200, 255, 0.35);
+            color: #BEEFFF;
+            border-radius: 999px;
+            padding: 5px 12px;
+            font-size: 0.85em;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        .chip-match .prof {
+            color: #7FD8FF;
+            opacity: 0.85;
+            font-size: 0.9em;
+        }
+        .chip-gap {
+            background: rgba(255, 61, 0, 0.08);
+            border: 1px solid rgba(255, 61, 0, 0.3);
+            color: #FFC9B8;
+            border-radius: 999px;
+            padding: 5px 12px;
+            font-size: 0.85em;
+            font-weight: 500;
+            white-space: nowrap;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -307,17 +348,27 @@ def insight_css_class(insight: str) -> str:
     return "insight-neutral"
 
 
+def kpi_value_color(pct: float) -> str:
+    """Tier color for a 0-100 KPI value. Blue/cyan = strong, amber = mid,
+    red = weak. No green, to match the rest of the theme."""
+    if pct >= 80:
+        return "#00C8FF"
+    if pct >= 60:
+        return "#FF9100"
+    return "#FF5252"
+
+
 # ==========================================
 # HEADER SECTION
 # ==========================================
 st.markdown(
-    """<h1 style='text-align: center; margin-bottom: 0; font-size: 2.6em;
-    background: linear-gradient(135deg, #FFFFFF 30%, #9BA6B4 100%);
+    """<h1 style='text-align: center; margin-bottom: 0; font-size: 2.8em; font-weight: 800;
+    background: linear-gradient(135deg, #A78BFA 0%, #00C8FF 100%);
     -webkit-background-clip: text; background-clip: text; color: transparent;'>
     🔮 Nexus AI Matchmaker</h1>""",
     unsafe_allow_html=True,
 )
-st.markdown("<p style='text-align: center; color: #8B949E; margin-bottom: 20px; font-size: 1.05em;'>Semantic vector intelligence for precision talent acquisition.</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #9AA4B2; margin-bottom: 20px; font-size: 1.05em;'>Semantic vector intelligence for precision talent acquisition.</p>", unsafe_allow_html=True)
 
 # Fetch jobs ONCE here and reuse the result below — the original code called
 # this again inside column 2, doubling the network cost on every render.
@@ -415,6 +466,20 @@ with col1:
                 else:
                     st.warning("Title and Requirements are mandatory.")
 
+    # --- Empty-space filler: quick usage tips so column 1 doesn't feel
+    # like it trails off into blank space below the two panels. Purely
+    # cosmetic — no data dependency. ---
+    with st.container(border=True):
+        st.markdown("#### 💡 Quick Tips")
+        st.markdown(
+            "<div style='color:#9AA4B2; font-size:0.88em; line-height:1.6;'>"
+            "• Upload resumes first, then create a target profile<br>"
+            "• Match scores update instantly — no page reload needed<br>"
+            "• Use specific job requirements for tighter semantic matches"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
 # ==========================================
 # COLUMN 2: MATCHER & LEADERBOARD VIEW
 # ==========================================
@@ -477,13 +542,30 @@ with col2:
                                         st.markdown("**Overall Semantic Match:**")
                                         st.progress(min(1.0, max(0.0, score / 100)))
 
-                                        # Score breakdown — also computed by the backend
-                                        # and previously unused.
+                                        # Score breakdown — rendered as three KPI tiles with
+                                        # tier-colored values instead of bare st.metric numbers.
                                         if breakdown:
-                                            b1, b2, b3 = st.columns(3)
-                                            b1.metric("Skill Match", f"{breakdown.get('impact_weighted_match', 0) * 100:.0f}%")
-                                            b2.metric("Semantic Affinity", f"{breakdown.get('vector_affinity', 0) * 100:.0f}%")
-                                            b3.metric("Critical Coverage", f"{breakdown.get('critical_skill_ratio', 0) * 100:.0f}%")
+                                            skill_pct = breakdown.get('impact_weighted_match', 0) * 100
+                                            affinity_pct = breakdown.get('vector_affinity', 0) * 100
+                                            critical_pct = breakdown.get('critical_skill_ratio', 0) * 100
+
+                                            kpi_html = f"""
+                                            <div style="display:flex; gap:14px; margin-bottom: 8px;">
+                                                <div class="kpi-tile" style="flex:1;">
+                                                    <div class="kpi-label">Skill Match</div>
+                                                    <div class="kpi-value" style="color:{kpi_value_color(skill_pct)};">{skill_pct:.0f}%</div>
+                                                </div>
+                                                <div class="kpi-tile" style="flex:1;">
+                                                    <div class="kpi-label">Semantic Affinity</div>
+                                                    <div class="kpi-value" style="color:{kpi_value_color(affinity_pct)};">{affinity_pct:.0f}%</div>
+                                                </div>
+                                                <div class="kpi-tile" style="flex:1;">
+                                                    <div class="kpi-label">Critical Coverage</div>
+                                                    <div class="kpi-value" style="color:{kpi_value_color(critical_pct)};">{critical_pct:.0f}%</div>
+                                                </div>
+                                            </div>
+                                            """
+                                            st.markdown(kpi_html, unsafe_allow_html=True)
 
                                         st.markdown("---")
 
@@ -517,16 +599,22 @@ with col2:
                                         with skill_col1:
                                             st.markdown("#### ✅ Verified Matches")
                                             if matched_skills:
-                                                for skill, prof in matched_skills:
-                                                    st.markdown(f"- **{skill}** *(Proficiency: {prof}/5)*")
+                                                chips = "".join(
+                                                    f'<span class="chip-match">{skill} <span class="prof">· {prof}/5</span></span>'
+                                                    for skill, prof in matched_skills
+                                                )
+                                                st.markdown(f'<div class="chip-row">{chips}</div>', unsafe_allow_html=True)
                                             else:
                                                 st.caption("No direct skills verified.")
 
                                         with skill_col2:
                                             st.markdown("#### ❌ Skill Gaps")
                                             if missing_skills:
-                                                for missing in missing_skills:
-                                                    st.markdown(f"- {missing}")
+                                                chips = "".join(
+                                                    f'<span class="chip-gap">{missing}</span>'
+                                                    for missing in missing_skills
+                                                )
+                                                st.markdown(f'<div class="chip-row">{chips}</div>', unsafe_allow_html=True)
                                             else:
                                                 st.caption("No major skill gaps detected!")
 
@@ -556,7 +644,7 @@ with col2:
                                         "Match %": scores,
                                     }).set_index("Candidate")
 
-                                    st.bar_chart(df_scores, color="#00E5FF", height=300)
+                                    st.bar_chart(df_scores, color="#7C3AED", height=300)
 
                     else:
                         st.error(f"Ranking endpoint failed: {rank_res.text}")
