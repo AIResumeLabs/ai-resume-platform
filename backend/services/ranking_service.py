@@ -24,14 +24,34 @@ SKILL_ALIASES = {
     "csharp": "c#",
     "postgres": "postgresql",
     "problemsolving": "problem solving",
+    "dsa": "data structures & algorithms",
+    "api integration": "rest api",
+    "restful api": "rest api",
+    "restful apis": "rest api",
+    "rest apis": "rest api",
 }
 
-# Maps broad JD requirements to specific candidate skills (hierarchical match).
 SKILL_CATEGORIES = {
     "sql": ["sql", "mysql", "postgresql", "sqlite", "oracle", "sql server"],
     "orm": ["orm", "sqlalchemy", "hibernate", "prisma", "django orm"],
-    "problem solving": ["problem solving", "competitive programming", "algorithms", "data structures"],
-    "rest api": ["rest api", "fastapi", "flask", "django", "express", "api"],
+    "problem solving": [
+        "problem solving",
+        "competitive programming",
+        "algorithms",
+        "data structures",
+        "data structures & algorithms",
+        "dsa",
+    ],
+    "rest api": [
+        "rest api",
+        "fastapi",
+        "flask",
+        "django",
+        "express",
+        "api",
+        "api integration",
+        "rest apis",
+    ],
     "version control": ["version control", "git", "github", "gitlab", "bitbucket"],
     "aws": ["aws", "amazon web services", "ec2", "s3"],
     "authentication": ["authentication", "jwt", "oauth", "auth", "security"],
